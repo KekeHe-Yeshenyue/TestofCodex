@@ -1,136 +1,104 @@
-# NEGF Quantum Transport Simulation for Silicon Nanowire
+# NEGF Quantum Transport Simulation for Silicon Nanowire & GAA Transistors
 
 ## Overview
 
 This code implements the **Non-Equilibrium Green's Function (NEGF)** formalism
-for ballistic quantum transport in a silicon nanowire, using an effective-mass
-tight-binding Hamiltonian. It demonstrates two key numerical techniques:
+for ballistic quantum transport in semiconductor nanowires. It provides two
+complementary simulation modes unified in a single module:
 
-1. **Surface Green's Function** (Sancho-Rubio iterative method) — to model
-   semi-infinite source/drain contacts.
-2. **Recursive Green's Function (RGF)** — to efficiently invert the large
-   device Hamiltonian layer-by-layer.
+| Mode | Geometry | GF Method | Self-Consistency |
+|---|---|---|---|
+| **Rectangular nanowire** | Ny x Nz cross-section | Block-matrix RGF | No (fixed potential) |
+| **GAA transistor** | Cylindrical (1D/2D) | Full-matrix inversion | Yes (NEGF-Poisson loop) |
+
+### Key Algorithms
+
+1. **Surface Green's Function** (Sancho-Rubio decimation) for semi-infinite leads
+2. **Recursive Green's Function (RGF)** for block-tridiagonal systems
+3. **Full G^R, G^A, G^<** via direct inversion for GAA mode
+4. **Self-consistent NEGF-Poisson loop** for electrostatics
+
+### Key Features
+
+- Multiple materials: Si, Ge, InGaAs, GaAs (configurable effective mass, bandgap, dielectric)
+- Transmission T(E), current (Landauer-Buttiker), LDOS, electron density
+- Bond current for spatially-resolved current flow
+- Transfer characteristics (I_D vs V_G), output characteristics (I_D vs V_D)
+- Hamiltonian export (npz, csv, txt, mat formats)
+- Comprehensive test suite
 
 ## Physical Model
 
 ### Tight-Binding Hamiltonian (Effective-Mass Approximation)
 
-The nanowire is discretized on a 3D grid with lattice spacing `a`. The
-transport direction is `x`, while the cross-section spans `y` and `z`.
-
-The discretized single-band effective-mass Schrödinger equation gives:
+The nanowire is discretized on a grid with lattice spacing `a` (rectangular) or
+`dz` (cylindrical). Hopping parameters:
 
 ```
-H |ψ⟩ = E |ψ⟩
-```
-
-with hopping parameters:
-
-```
-t_α = ℏ² / (2 m*_α a²),    α ∈ {x, y, z}
+t_alpha = h_bar^2 / (2 m*_alpha a^2),    alpha in {x, y, z}
 ```
 
 The Hamiltonian is block-tridiagonal along the transport direction:
 
 ```
-        ┌                                    ┐
-        │ H₁   V    0    0   ...  0    0     │
-        │ V†   H₂   V    0   ...  0    0     │
-H_dev = │ 0    V†   H₃   V   ...  0    0     │
-        │ ⋮                  ⋱                │
-        │ 0    0    0    0   ... V†   H_Nx    │
-        └                                    ┘
+        [ H_1   V    0    0   ...  0    0   ]
+        [ V+   H_2   V    0   ...  0    0   ]
+H_dev = [ 0    V+   H_3   V   ...  0    0   ]
+        [ :                  .               ]
+        [ 0    0    0    0   ... V+   H_Nx  ]
 ```
 
-- `Hᵢ` = on-site block for slice `i` (includes 2D cross-section Hamiltonian
-  + electrostatic potential)
-- `V` = inter-slice coupling matrix (diagonal, = −tₓ I)
+### Surface Green's Function (Sancho-Rubio)
 
-## Algorithms
-
-### 1. Surface Green's Function (Sancho-Rubio Method)
-
-To model semi-infinite leads, we need the surface Green's function `gₛ(E)` of a
-semi-infinite chain of identical slices. Direct inversion is impossible for an
-infinite system, so we use the iterative decimation technique of
-Lopez-Sancho et al. (1985):
+For semi-infinite leads, the iterative decimation converges exponentially:
 
 ```
-Initialize:
-    εₛ = H_slice,   ε = H_slice
-    α  = V,          β = V†
+Initialize:  eps_s = H_slice,  eps = H_slice,  alpha = V,  beta = V+
 
-Iterate until ‖α‖ < tolerance:
-    g_ε  = (EI - ε)⁻¹
-    εₛ  ← εₛ + α · g_ε · β
-    ε   ← ε  + α · g_ε · β + β · g_ε · α
-    α   ← α · g_ε · α
-    β   ← β · g_ε · β
+Iterate until ||alpha|| < tol:
+    g = (EI - eps)^(-1)
+    eps_s <- eps_s + alpha . g . beta
+    eps   <- eps + alpha . g . beta + beta . g . alpha
+    alpha <- alpha . g . alpha
+    beta  <- beta . g . beta
 
-Result:
-    gₛ = (EI - εₛ)⁻¹
+Result: g_s = (EI - eps_s)^(-1)
 ```
 
-This converges exponentially fast (each iteration doubles the effective lead
-length). The contact self-energy is then:
+Contact self-energy: `Sigma = V+ . g_s . V`
 
+### Recursive Green's Function (Block-Matrix RGF)
+
+O(Nx . N_orb^3) algorithm for the rectangular nanowire:
+
+**Forward sweep** (left-connected GFs):
 ```
-Σ_L = V† · gₛ_L · V
-Σ_R = V† · gₛ_R · V
-```
-
-### 2. Recursive Green's Function (RGF) Algorithm
-
-Instead of inverting the full `(Nx·N_orb × Nx·N_orb)` matrix, the RGF
-algorithm obtains the diagonal blocks of G^R in O(Nx · N_orb³) operations:
-
-**Forward sweep** (left-connected Green's functions):
-
-```
-gL[0] = (EI - H₁ - Σ_L)⁻¹
-
-gL[i] = (EI - Hᵢ - V† · gL[i-1] · V)⁻¹,   i = 1, ..., Nx-1
-         (add Σ_R for the last slice)
+gL[0] = (EI - H_1 - Sigma_L)^(-1)
+gL[i] = (EI - H_i - V+ . gL[i-1] . V)^(-1)
 ```
 
 **Backward sweep** (full diagonal blocks):
-
 ```
 G[Nx-1] = gL[Nx-1]
-
-G[i] = gL[i] + gL[i] · V · G[i+1] · V† · gL[i],   i = Nx-2, ..., 0
+G[i] = gL[i] + gL[i] . V . G[i+1] . V+ . gL[i]
 ```
 
-The electron correlation function G^n (needed for carrier density) is computed
-with a similar two-pass RGF using in-scattering functions from the contacts.
+G^n (electron correlation) is computed with an analogous two-pass RGF using
+in-scattering functions from the contacts.
 
-### 3. Transmission (Fisher-Lee / Caroli Formula)
+### Transport Quantities
 
-```
-T(E) = Tr[Γ_L · G^R · Γ_R · G^A]
-```
+- **Transmission**: `T(E) = Tr[Gamma_L . G^R . Gamma_R . G^A]`
+- **Current**: `I = (2e/h) integral T(E) [f_S(E) - f_D(E)] dE`
+- **LDOS**: `LDOS(x, E) = -(1/pi) Im[Tr(G^R_xx)]`
+- **Electron density**: `n(r) = -(1/pi) integral Im[G^<(r,r,E)] dE`
+- **Bond current**: `I_{l->l+1} = (2e/h_bar) Re{Tr[H_{l,l+1} . G^<_{l+1,l}]}`
 
-where `Γ = i(Σ - Σ†)` is the broadening matrix and `G^A = (G^R)†`.
-
-The off-diagonal block `G^R_{0,Nx-1}` is built from the forward sweep:
-
-```
-G_{0,N-1} = gL[0] · V · gL[1] · V · ... · V · G[Nx-1]
-```
-
-### 4. Current Density (Landauer-Büttiker)
+### Self-Consistent Loop (GAA Mode)
 
 ```
-I = (2e/h) ∫ T(E) [f_S(E) - f_D(E)] dE
-```
-
-The factor of 2 accounts for spin degeneracy. `f_S` and `f_D` are Fermi-Dirac
-distributions of source (μ_S = 0) and drain (μ_D = −eV_bias).
-
-### 5. Local Density of States
-
-```
-LDOS(x, E) = −(1/π) Im[ Tr(G^R_{xx}) ]
+Init density rho -> Poisson (V) -> Hamiltonian H(V) -> NEGF (G^<)
+    -> new rho -> mix -> check convergence -> repeat
 ```
 
 ## Usage
@@ -141,76 +109,92 @@ LDOS(x, E) = −(1/π) Im[ Tr(G^R_{xx}) ]
 pip install numpy scipy matplotlib
 ```
 
-### Quick Run
+### Rectangular Nanowire (Block-RGF)
 
 ```bash
 python negf_silicon_nanowire.py
 ```
 
-This runs the default simulation (3×3 cross-section, 40 slices, V_bias=0.3 V)
-and produces:
-- Console output with current and conductance
-- `negf_results.png` with four subplots:
-  (a) Transmission spectrum
-  (b) Current integrand
-  (c) LDOS map
-  (d) Band diagram
-
-### Custom Parameters
-
 ```python
 from negf_silicon_nanowire import DeviceParams, solve_negf, plot_results
 
-p = DeviceParams(
-    Ny=5, Nz=5,          # larger cross-section
-    Nx=80,                # longer channel
-    V_bias=0.5,           # higher bias
-    V_gate=0.2,           # gate voltage
-    T=77.0,               # low temperature
-    E_min=-1.0, E_max=3.0,
-    NE=400,
-)
-
+p = DeviceParams(Ny=3, Nz=3, Nx=40, V_bias=0.3, V_gate=0.0)
 E, T, I, LDOS = solve_negf(p)
 plot_results(E, T, I, LDOS, p)
 ```
 
-### I-V Curve
+### GAA Transistor (Self-Consistent)
 
-```python
-from negf_silicon_nanowire import DeviceParams, compute_iv_curve
-import numpy as np
-
-p = DeviceParams(Ny=3, Nz=3, Nx=40, NE=150)
-V_values = np.linspace(0.01, 0.6, 12)
-currents = compute_iv_curve(p, V_values)
+```bash
+python run_gaa_simulation.py
 ```
 
-## Code Structure
+```python
+from negf_silicon_nanowire import GAADeviceParams, SelfConsistentNEGF
+
+params = GAADeviceParams(
+    channel_length=12e-9, nanowire_radius=2.5e-9,
+    nz=40, nr=1, vg=0.4, vd=0.1,
+    source_doping=1e20, drain_doping=1e20,
+)
+solver = SelfConsistentNEGF(params, mixing=0.15, max_iter=30, tol=1e-3)
+results = solver.solve(E_min=-0.5, E_max=0.8, n_energy=80)
+```
+
+### Material Comparison
+
+```python
+from negf_silicon_nanowire import Material, MaterialType, GAADeviceParams
+
+params = GAADeviceParams(channel_length=10e-9, nz=30, nr=1, vg=0.3)
+params.material = Material.get_material(MaterialType.INGAAS)
+```
+
+### Run Tests
+
+```bash
+python test_negf.py
+```
+
+## File Structure
+
+| File | Description |
+|---|---|
+| `negf_silicon_nanowire.py` | Unified NEGF module (rectangular + GAA) |
+| `run_gaa_simulation.py` | GAA simulation examples (transfer, output, LDOS, materials) |
+| `test_negf.py` | Comprehensive test suite (12 tests) |
+| `README_NEGF.md` | This documentation |
+
+## Code Structure (`negf_silicon_nanowire.py`)
+
+### Part A: Rectangular Nanowire (Block-RGF)
 
 | Function | Description |
 |---|---|
-| `build_slice_hamiltonian()` | 2D tight-binding H for one cross-section |
-| `build_coupling_matrix()` | Inter-slice hopping V = −tₓ I |
+| `build_slice_hamiltonian()` | 2D tight-binding H for one Ny x Nz cross-section |
+| `build_coupling_matrix()` | Inter-slice hopping V = -t_x I |
 | `potential_profile()` | Electrostatic potential along the wire |
-| `surface_green_function()` | Sancho-Rubio iterative surface GF |
-| `contact_self_energy()` | Lead self-energy Σ = V† gₛ V |
-| `broadening()` | Coupling matrix Γ = i(Σ − Σ†) |
-| `recursive_green_function()` | Full RGF: G^R, G^n, T(E) |
-| `solve_negf()` | Main solver: energy sweep → T(E), I, LDOS |
+| `surface_green_function()` | Functional Sancho-Rubio surface GF |
+| `contact_self_energy()` | Lead self-energy Sigma = V+ g_s V |
+| `recursive_green_function()` | Block-RGF: G^R, G^n diagonal blocks, T(E) |
+| `solve_negf()` | Full energy sweep -> T(E), I, LDOS |
 | `plot_results()` | Four-panel visualization |
-| `compute_iv_curve()` | Bias sweep for I-V characteristic |
+| `compute_iv_curve()` | Bias sweep for I-V |
+
+### Part B: GAA Transistor (Full-Matrix)
+
+| Class | Description |
+|---|---|
+| `MaterialType` / `Material` | Semiconductor material database |
+| `GAADeviceParams` | Cylindrical transistor parameters |
+| `SurfaceGreenFunction` | Sancho-Rubio + iterative surface GF |
+| `NEGFSolver` | G^R, G^A, G^<, T(E), LDOS, bond current, H export |
+| `PoissonSolver` | 1D Poisson with GAA gate coupling |
+| `SelfConsistentNEGF` | NEGF-Poisson self-consistent loop |
 
 ## References
 
-1. S. Datta, *Quantum Transport: Atom to Transistor*, Cambridge University
-   Press (2005).
-2. M.P. Lopez-Sancho, J.M. Lopez-Sancho, J. Rubio, *Highly convergent schemes
-   for the calculation of bulk and surface Green functions*, J. Phys. F: Met.
-   Phys. **15**, 851 (1985).
-3. A. Svizhenko, M.P. Anantram, T.R. Govindan, B. Biegel, R. Venugopal,
-   *Two-dimensional quantum mechanical modeling of nanotransistors*, J. Appl.
-   Phys. **91**, 2343 (2002).
-4. R. Lake, G. Klimeck, R.C. Bowen, D. Jovanovic, *Single and multiband
-   modeling of quantum electron transport through layered semiconductor
-   devices*, J. Appl. Phys. **81**, 7845 (1997).
+1. S. Datta, *Quantum Transport: Atom to Transistor*, Cambridge (2005).
+2. M.P. Lopez-Sancho et al., J. Phys. F: Met. Phys. **15**, 851 (1985).
+3. A. Svizhenko et al., J. Appl. Phys. **91**, 2343 (2002).
+4. R. Lake et al., J. Appl. Phys. **81**, 7845 (1997).
