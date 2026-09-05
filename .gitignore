@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.png
+hamiltonian*.npz
+hamiltonian*.txt
+hamiltonian*.csv
+hamiltonian*.mat
+
+# keep the documented result figures of the NEGF suite
+!negf_suite/figures/*.png
