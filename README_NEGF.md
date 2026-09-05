@@ -198,3 +198,18 @@ python test_negf.py
 2. M.P. Lopez-Sancho et al., J. Phys. F: Met. Phys. **15**, 851 (1985).
 3. A. Svizhenko et al., J. Appl. Phys. **91**, 2343 (2002).
 4. R. Lake et al., J. Appl. Phys. **81**, 7845 (1997).
+
+---
+
+## New: `negf_suite/` — three-level NEGF suite (Datta basics → TranSIESTA-style GAA FET → k·p)
+
+See [`negf_suite/README.md`](negf_suite/README.md) for the full description,
+hardware requirements, measured timings, validation tests, and the answers to
+the questions on running locally, DFT-NEGF, k·p and entry-level NEGF.
+
+| file | what |
+|---|---|
+| `negf_suite/negf_level1_datta_basics.py` | beginner 1-D NEGF following Datta's MATLAB scripts, mapped line-by-line onto `dpnegf` |
+| `negf_suite/negf_level2_gaa_transiesta_style.py` | self-consistent NEGF–Poisson GAA Si nanowire FET with TranSIESTA's contour/weighting scheme, Sancho-Rubio, RGF, 3-D gate-all-around Poisson |
+| `negf_suite/negf_level3_kp_nanowire.py` | 6-band k·p hole transport with coupled mode space |
+| `negf_suite/test_negf_suite.py` | physics-identity tests |
