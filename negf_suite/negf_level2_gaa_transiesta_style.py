@@ -538,7 +538,7 @@ def scf(p: GAAParams, verbose=True, U_lead=None, phi_init=None):
         U_lead = neutral_lead_shift(p)
     phi_S = -U_lead; phi_D = phi_S + p.V_ds
     if verbose:
-        print(f"[TS-1] lead: N_D={p.N_D:.1e} cm^-3 -> band offset U_lead = {U_lead:+.4f} eV (E_F - E_c,lead = {-U_lead:.3f} eV)  [{time.time()-t0:.1f}s]")
+        print(f"[TS-1] lead: N_D={p.N_D:.1e} cm^-3 -> band offset U_lead = {U_lead:+.4f} eV (E_F - E_c,lead = {-U_lead:.3f} eV)  [{time.time()-t0:.1f}s]", flush=True)
     pois = Poisson3D(p, phi_S, phi_D)
     devs = [Device(p, mx, my, mz, g, U_lead, U_lead - p.V_ds) for (mx, my, mz, g) in p.valley_list]
     # initial potential: linear S->D in x, on the whole box
@@ -562,7 +562,7 @@ def scf(p: GAAParams, verbose=True, U_lead=None, phi_init=None):
         hist.append(dphi)
         if verbose:
             nev = sum(getattr(d, '_n_neq_eval', 0) for d in devs)
-            print(f"   SCF {it:2d}  max|dphi| = {dphi:.2e} V   Ne = {n.sum():8.3f}   neq evals = {nev:4d}   [{time.time()-t1:.1f}s/iter]")
+            print(f"   SCF {it:2d}  max|dphi| = {dphi:.2e} V   Ne = {n.sum():8.3f}   neq evals = {nev:4d}   [{time.time()-t1:.1f}s/iter, {time.time()-t0:.0f}s total]", flush=True)
         if dphi < p.scf_tol: break
     U = pois.core_potential(phi)
     for d in devs: d.set_potential(U)
