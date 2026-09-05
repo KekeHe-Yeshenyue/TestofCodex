@@ -8,8 +8,8 @@ written for this request, all were run end-to-end on the machine described in
 
 | Level | File | Physics | Numerical method | Size of the demo | Wall time here | Runs on a laptop? |
 |---|---|---|---|---|---|---|
-| 1 | `negf_level1_datta_basics.py` | 1-D wire, Datta *Atom to Transistor* ch. 8–11 | analytic Σ, dense inverse, real-axis integral, 1-D Poisson (Gummel), Büttiker-probe dephasing | 100×100 matrices | **19 s** (all 5 demos) | yes, any laptop |
-| 2 | `negf_level2_gaa_transiesta_style.py` | GAA Si n-FET, effective-mass TB, 3-D Poisson with wrap-around gate, self-consistent | Lopez-Sancho surface GF, recursive GF (BTD), **TranSIESTA complex contour + real-axis bias window**, Ozaki poles, Gummel–Newton Poisson | `--quick`: 6×6=36 orbitals × 40 slices; default: 64 orbitals × 53 slices | quick: **100–150 s**; default: **470 s** (4 cores) | quick: yes; default: yes, ~8 min per bias point on 4 cores |
+| 1 | `negf_level1_datta_basics.py` | 1-D wire, Datta *Atom to Transistor* ch. 8–11 | analytic Σ, dense inverse, real-axis integral, 1-D Poisson (Gummel), Büttiker-probe dephasing | 100×100 matrices | **14 s** (all 5 demos) | yes, any laptop |
+| 2 | `negf_level2_gaa_transiesta_style.py` | GAA Si n-FET, effective-mass TB, 3-D Poisson with wrap-around gate, self-consistent | Lopez-Sancho surface GF, recursive GF (BTD), **TranSIESTA complex contour + real-axis bias window**, Ozaki poles, Gummel–Newton Poisson | `--quick`: 6×6=36 orbitals × 40 slices; default: 64 orbitals × 53 slices | quick: **139 s** serial / **102 s** with 4 workers; default: **470 s** (4 cores) | quick: yes; default: yes, ~8 min per bias point on 4 cores |
 | 3 | `negf_level3_kp_nanowire.py` | 6-band Luttinger–Kohn k·p, hole transport in a Si p-FET nanowire | FD-discretised k·p, matrix-valued inter-slice coupling, **coupled mode space**, same RGF/Sancho-Rubio | 216 orbitals/slice real space (validation) → 64 modes | **38 s** | yes |
 | — | `test_negf_suite.py` | 9 identity tests (see §6) | | | **9 s** | yes |
 
@@ -39,8 +39,9 @@ runs in minutes on a modern laptop; timings below are what I measured.
 **Yes — you can run all of it locally.**  Concretely:
 
 * Level 1 and Level 3, and Level 2 `--quick`: any laptop with 4 GB RAM,
-  including older machines. Level 1 needs about 20 s, Level 3 about 40 s,
-  Level 2 quick about 2 min.
+  including older machines. Level 1 needs 14 s, Level 3 about 40 s,
+  Level 2 quick 139 s serial (102 s with `--workers 4`); a 5-point quick
+  I<sub>d</sub>–V<sub>g</sub> sweep took 470 s with 4 workers.
 * Level 2 at the default size (2.4 nm × 2.4 nm Si core = 64 orbitals per slice,
   53 slices, one bias point at V<sub>g</sub> = 0.6 V, V<sub>ds</sub> = 0.3 V): **470 s
   on 4 cores** (`--workers 4`; 16 SCF iterations of 22–31 s, 900–1240 real-axis
@@ -69,7 +70,7 @@ costs the same).  Rules of thumb from the measured runs:
 
 | device | N_orb | slices | one G(E) | one SCF iteration | one bias point |
 |---|---|---|---|---|---|
-| quick (1.8 nm) | 36 | 40 | ~6 ms | 5–10 s | 100–150 s |
+| quick (1.8 nm) | 36 | 40 | ~12 ms | 8.4 s serial / 5.6 s with 4 workers | 139 s serial / 102 s with 4 workers |
 | default (2.4 nm) | 64 | 53 | ~45 ms (Sancho-Rubio 4–9 ms + RGF 25 ms + spectral functions) | 22–31 s on 4 cores (~100 s serial) | 470 s on 4 cores (16 SCF iterations) |
 | 3-valley Si, 3 nm, 20 nm long | 100 ×3 valleys | 67 | ~0.3 s | ~5 min | ~1 h |
 | atomistic sp³d⁵s* 5 nm Si wire (not this code) | ~10⁴ | ~100 | seconds–minutes | hours | days on a cluster |
@@ -149,7 +150,12 @@ measured relative to the source lead through a flat-band offset `phi_ms`
 
 Results of the quick device (1.8 nm core, L<sub>g</sub> = 6 nm, V<sub>ds</sub> = 0.3 V):
 I<sub>d</sub>(V<sub>g</sub>=0) = 0.00 µA (OFF, barrier 0.23 eV above μ<sub>S</sub>),
-I<sub>d</sub>(V<sub>g</sub>=0.5 V) = 2.99 µA (ON).  See `figures/level2_gaa_*.png`.
+I<sub>d</sub>(V<sub>g</sub>=0.5 V) = 2.99 µA (ON).  Quick I<sub>d</sub>–V<sub>g</sub> sweep (`--sweep`):
+0.000, 0.002, 0.80, 3.25, 3.17 µA at V<sub>g</sub> = 0, 0.2, 0.4, 0.6, 0.8 V — a clean
+OFF→ON transition that saturates once the channel band drops below the source
+subband edge (`figures/level2_gaa_quick_IdVg.png`).  Default-size device at
+V<sub>g</sub> = 0.6 V: I<sub>d</sub> = 8.83 µA (`figures/level2_gaa_default_Vg0.6_ON.png`).
+See also `figures/level2_gaa_quick_Vg0.5_ON.png` and `level2_gaa_cross_section_phi.png`.
 
 What Level 2 does **not** contain (and TranSIESTA does): a DFT Hamiltonian,
 overlap matrix S, k-point sampling transverse to transport, multiple
@@ -229,7 +235,7 @@ The five demos and what a beginner should see:
 5. **Dephasing** — a double-barrier resonance (T<sub>peak</sub> = 1) is degraded
    to 0.95 / 0.69 / 0.48 for D = 10⁻⁴ / 10⁻³ / 10⁻² eV².
 
-Total run time 19 s; largest matrix 100 × 100.
+Total run time 14 s; largest matrix 100 × 100.
 
 ---
 
