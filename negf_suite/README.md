@@ -9,7 +9,7 @@ written for this request, all were run end-to-end on the machine described in
 | Level | File | Physics | Numerical method | Size of the demo | Wall time here | Runs on a laptop? |
 |---|---|---|---|---|---|---|
 | 1 | `negf_level1_datta_basics.py` | 1-D wire, Datta *Atom to Transistor* ch. 8–11 | analytic Σ, dense inverse, real-axis integral, 1-D Poisson (Gummel), Büttiker-probe dephasing | 100×100 matrices | **19 s** (all 5 demos) | yes, any laptop |
-| 2 | `negf_level2_gaa_transiesta_style.py` | GAA Si n-FET, effective-mass TB, 3-D Poisson with wrap-around gate, self-consistent | Lopez-Sancho surface GF, recursive GF (BTD), **TranSIESTA complex contour + real-axis bias window**, Ozaki poles, Gummel–Newton Poisson | `--quick`: 6×6=36 orbitals × 40 slices; default: 64 orbitals × 53 slices | quick: **100–150 s**; default: see §1 | quick: yes; default: yes but minutes per bias point |
+| 2 | `negf_level2_gaa_transiesta_style.py` | GAA Si n-FET, effective-mass TB, 3-D Poisson with wrap-around gate, self-consistent | Lopez-Sancho surface GF, recursive GF (BTD), **TranSIESTA complex contour + real-axis bias window**, Ozaki poles, Gummel–Newton Poisson | `--quick`: 6×6=36 orbitals × 40 slices; default: 64 orbitals × 53 slices | quick: **100–150 s**; default: **470 s** (4 cores) | quick: yes; default: yes, ~8 min per bias point on 4 cores |
 | 3 | `negf_level3_kp_nanowire.py` | 6-band Luttinger–Kohn k·p, hole transport in a Si p-FET nanowire | FD-discretised k·p, matrix-valued inter-slice coupling, **coupled mode space**, same RGF/Sancho-Rubio | 216 orbitals/slice real space (validation) → 64 modes | **38 s** | yes |
 | — | `test_negf_suite.py` | 9 identity tests (see §6) | | | **9 s** | yes |
 
@@ -41,13 +41,18 @@ runs in minutes on a modern laptop; timings below are what I measured.
 * Level 1 and Level 3, and Level 2 `--quick`: any laptop with 4 GB RAM,
   including older machines. Level 1 needs about 20 s, Level 3 about 40 s,
   Level 2 quick about 2 min.
-* Level 2 at the default size (2.4 nm × 2.4 nm Si core, 16 nm long, one bias
-  point): about 10–20 minutes on 4 cores; a full I<sub>d</sub>–V<sub>g</sub> sweep of 5
-  points is an hour.  Run it in the background, or shrink it with the CLI flags.
-* Recommended invocation for multi-core machines (avoids BLAS/process thread
-  over-subscription):
-
-      OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python negf_level2_gaa_transiesta_style.py --workers 4
+* Level 2 at the default size (2.4 nm × 2.4 nm Si core = 64 orbitals per slice,
+  53 slices, one bias point at V<sub>g</sub> = 0.6 V, V<sub>ds</sub> = 0.3 V): **470 s
+  on 4 cores** (`--workers 4`; 16 SCF iterations of 22–31 s, 900–1240 real-axis
+  Green-function evaluations each).  Serially that is roughly 25 minutes; a
+  5-point I<sub>d</sub>–V<sub>g</sub> sweep is 40 min on 4 cores.  Run it in the
+  background, or shrink the device with the CLI flags (`--quick`).
+* Multi-core note (learned the hard way): with `--workers N` the code pins the
+  BLAS library to one thread per process at import (`OPENBLAS_NUM_THREADS=1`).
+  Without that, the competing OpenBLAS thread pools made one 64×64 Green-function
+  evaluation take 13 s instead of 45 ms (a 300× slowdown; the same iteration went
+  from 3260 s to 24 s after pinning).  If you use MKL-numpy the same variable
+  `MKL_NUM_THREADS=1` is set for you.
 
 **Why NEGF is expensive, and how to predict cost.**  One Green-function
 evaluation with the recursive algorithm costs about
@@ -65,7 +70,7 @@ costs the same).  Rules of thumb from the measured runs:
 | device | N_orb | slices | one G(E) | one SCF iteration | one bias point |
 |---|---|---|---|---|---|
 | quick (1.8 nm) | 36 | 40 | ~6 ms | 5–10 s | 100–150 s |
-| default (2.4 nm) | 64 | 53 | ~40 ms | see §1 | see §1 |
+| default (2.4 nm) | 64 | 53 | ~45 ms (Sancho-Rubio 4–9 ms + RGF 25 ms + spectral functions) | 22–31 s on 4 cores (~100 s serial) | 470 s on 4 cores (16 SCF iterations) |
 | 3-valley Si, 3 nm, 20 nm long | 100 ×3 valleys | 67 | ~0.3 s | ~5 min | ~1 h |
 | atomistic sp³d⁵s* 5 nm Si wire (not this code) | ~10⁴ | ~100 | seconds–minutes | hours | days on a cluster |
 

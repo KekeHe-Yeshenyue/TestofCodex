@@ -50,7 +50,7 @@ Requirements  python >= 3.9, numpy, scipy, matplotlib.  No compiler.
 Run           python negf_level2_gaa_transiesta_style.py --quick     (~2 min)
               python negf_level2_gaa_transiesta_style.py --workers 4 (full size, ~10-20 min)
               python negf_level2_gaa_transiesta_style.py --help
-Hardware      quick: any laptop (< 1 GB RAM, ~2 min).  Default size: laptop, 10-20 min per bias point.
+Hardware      quick: any laptop (< 1 GB RAM, ~2 min).  Default size: ~8 min per bias point on 4 cores (470 s measured).
 =============================================================================
 """
 import os
