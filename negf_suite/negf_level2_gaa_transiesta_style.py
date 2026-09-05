@@ -53,6 +53,12 @@ Run           python negf_level2_gaa_transiesta_style.py --quick     (~2 min)
 Hardware      quick: any laptop (< 1 GB RAM, ~2 min).  Default size: laptop, 10-20 min per bias point.
 =============================================================================
 """
+import os
+# Pin the BLAS library to ONE thread *before* numpy is imported.  The matrices here are
+# small (<= a few hundred), where threaded BLAS gains nothing, and with --workers > 1 the
+# competing OpenBLAS thread pools of the worker processes slow everything down by 100x.
+for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_v, "1")
 import argparse
 import time
 import numpy as np
