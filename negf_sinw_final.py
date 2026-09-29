@@ -578,12 +578,21 @@ def neutral_lead_shift(p: NWParams, mask):
     def n_of_mu(mu):
         n = 0.0
         for lead, g in leads:
-            z, w = equilibrium_contour(mu, p.kT, -0.5, p.n_circle, p.n_line, p.n_pole)
+            z, w = equilibrium_contour(mu, p.kT, min(-0.5, e_sub - 1.0), p.n_circle, p.n_line, p.n_pole)
             tot = sum(wk * np.trace(lead.bulk_gf(zk)) for zk, wk in zip(z, w))
             n += g * (-np.imag(tot) / np.pi) / N
         return n
 
-    lo, hi = -0.5, 3.0
+    # bracket: start just below the lowest lead subband, expand upward until the lead
+    # holds enough electrons (light-mass materials have subbands several eV up).
+    # lead band bottom = lowest subband: min eig(h00) - 2 t_x, with h01 = -t_x
+    e_sub = min(np.linalg.eigvalsh(lead.h00)[0] + 2 * lead.h01[0, 0].real for lead, _ in leads)
+    lo, step = e_sub - 0.3, 0.5
+    hi = lo + step
+    while n_of_mu(hi) < nD_site:
+        lo, hi, step = hi, hi + 2 * step, 2 * step
+        if hi > e_sub + 50:
+            raise RuntimeError("lead Fermi level search did not converge")
     for _ in range(40):
         mid = 0.5 * (lo + hi)
         if n_of_mu(mid) > nD_site:
